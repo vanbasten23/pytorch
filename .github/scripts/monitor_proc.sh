@@ -17,11 +17,11 @@ get_gpu_max_memory_usage_cuda() {
     local max=$2
     local curr
     # Some processes might not use the GPU
-    if ! nvidia-smi --query-gpu=memory.used --format=csv | grep -o "[0-9.]*" >/dev/null 2>/dev/null; then
+    if ! nvidia-smi --query-gpu=memory.used --format=csv | grep -o "[0-9]*" >/dev/null 2>/dev/null; then
         echo "${max}"
         return
     fi
-    curr=$(nvidia-smi --query-gpu=memory.used --format=csv | grep -o "[0-9.]*")
+    curr=$(nvidia-smi --query-gpu=memory.used --format=csv | grep -o "[0-9]*")
     max "${curr}" "${max}"
 }
 
