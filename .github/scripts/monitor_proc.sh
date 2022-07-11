@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -eou pipefail
+set -eoux pipefail
 
 max() {
     local a=$1
