@@ -106,7 +106,18 @@ class TORCH_API CommHookInterface {
 namespace detail {
 // This helper function is called both by CppCommHookInterface below and inside
 // reducer.
- at::Tensor parseCppCommHookResult(const c10::IValue& result);
+inline at::Tensor parseCppCommHookResult(
+    const c10::IValue& result) {
+  TORCH_INTERNAL_ASSERT(
+      result.isTensor() || result.isTensorList(),
+      "expected the hook result is either a Tensor or a TensorList");
+
+  if (result.isTensor()) {
+    return result.toTensor();
+  }
+
+  return result.toTensorVector()[0];
+}
 } // namespace detail
 
 // This CppCommHook interface only requires implementing runHook method that
@@ -114,7 +125,7 @@ namespace detail {
 template <typename T>
 class CppCommHookInterface : public CommHookInterface {
  public:
-  explicit CppCommHookInterface(const T& state) : state_(state) {}
+  explicit CppCommHookInterface(T& state) : state_(state) {}
 
   ~CppCommHookInterface() override = default;
 

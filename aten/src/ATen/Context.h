@@ -11,7 +11,6 @@
 #include <ATen/detail/ORTHooksInterface.h>
 #include <c10/core/QEngine.h>
 #include <c10/core/impl/DeviceGuardImplInterface.h>
-#include <c10/util/CallOnce.h>
 #include <c10/util/Exception.h>
 #include <c10/util/irange.h>
 
@@ -100,10 +99,10 @@ class TORCH_API Context {
   // defined in header so that getNonVariableType has ability to inline
   // call_once check. getNonVariableType is called fairly frequently
   void lazyInitCUDA() {
-    c10::call_once(thc_init, [&] { detail::getCUDAHooks().initCUDA(); });
+    std::call_once(thc_init, [&] { detail::getCUDAHooks().initCUDA(); });
   }
   void lazyInitHIP() {
-    c10::call_once(thh_init, [&] { detail::getHIPHooks().initHIP(); });
+    std::call_once(thh_init, [&] { detail::getHIPHooks().initHIP(); });
   }
   static const at::cuda::NVRTC& getNVRTC() {
     return detail::getCUDAHooks().nvrtc();
@@ -121,8 +120,6 @@ class TORCH_API Context {
   void setUserEnabledMkldnn(bool e);
   bool benchmarkCuDNN() const;
   void setBenchmarkCuDNN(bool);
-  int benchmarkLimitCuDNN() const;
-  void setBenchmarkLimitCuDNN(int);
   bool deterministicCuDNN() const;
   void setDeterministicCuDNN(bool);
 
@@ -247,8 +244,8 @@ class TORCH_API Context {
     }
   }
   static bool checkCuBLASConfigDeterministic();
-  c10::once_flag thc_init;
-  c10::once_flag thh_init;
+  std::once_flag thc_init;
+  std::once_flag thh_init;
   bool enabled_cudnn = true;
   bool deterministic_cudnn = false;
   bool _deterministic_algorithms = false;
@@ -256,7 +253,6 @@ class TORCH_API Context {
   bool benchmark_cudnn = false;
   Float32MatmulPrecision float32_matmul_precision =
       at::Float32MatmulPrecision::HIGHEST;
-  int benchmark_limit_cudnn = 10;
   bool allow_tf32_cudnn = true;
   bool allow_fp16_reduction_cublas = true;
   bool enabled_mkldnn = true;

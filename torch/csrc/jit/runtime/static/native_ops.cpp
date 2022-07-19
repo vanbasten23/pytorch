@@ -967,19 +967,16 @@ class TORCH_API ForkedSubgraphSRLauncher {
   ForkedSubgraphSRLauncher(
       std::shared_ptr<StaticModule> smodule,
       std::vector<IValue> args,
-      c10::intrusive_ptr<Future> future,
-      TaskLauncher launcher)
+      c10::intrusive_ptr<Future> future)
       : smodule_(std::move(smodule)),
         args_(std::move(args)),
-        future_(std::move(future)),
-        launcher_(std::move(launcher)) {}
+        future_(std::move(future)) {}
 
   void operator()() {
     try {
       StaticRuntime runtime(*smodule_);
-      auto future_subgraph = runtime.runAsync(args_, {}, launcher_);
-      future_subgraph->waitAndThrow();
-      future_->markCompleted(future_subgraph->value());
+      auto output = runtime(args_, {});
+      future_->markCompleted(output);
     } catch (const std::exception& e) {
       future_->setErrorIfNeeded(
           std::make_exception_ptr(c10::ivalue::Future::FutureError(e.what())));
@@ -990,7 +987,6 @@ class TORCH_API ForkedSubgraphSRLauncher {
   std::shared_ptr<StaticModule> smodule_;
   std::vector<IValue> args_;
   c10::intrusive_ptr<Future> future_;
-  torch::jit::TaskLauncher launcher_;
 };
 
 /*
@@ -1044,12 +1040,11 @@ REGISTER_NATIVE_OPERATOR_FUNCTOR(
             createFutureTypeFromGraphOutput(forkedGraph);
         p_node->Output(0) = future;
 
+        ForkedSubgraphSRLauncher runtime_launcher(smodule, args, future);
         auto* metadata = p_node->metadata();
         DCHECK(metadata);
         auto* launcher = metadata->launcher();
         DCHECK(launcher);
-        ForkedSubgraphSRLauncher runtime_launcher(
-            smodule, args, future, *launcher);
         (*launcher)(std::move(runtime_launcher));
       };
     });

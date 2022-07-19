@@ -1,7 +1,6 @@
 #include <torch/csrc/jit/codegen/cuda/interface.h>
 
 #include <ATen/core/dispatch/OperatorOptions.h>
-#include <c10/util/CallOnce.h>
 #include <c10/util/irange.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
 #include <torch/csrc/jit/runtime/register_ops_utils.h>
@@ -35,7 +34,7 @@ static std::atomic<bool> cuda_fusion_guard_mode{true};
 class NVFuserEnabler {
  private:
   c10::optional<bool> runtime_assigned_fuser_enabled_ = c10::nullopt;
-  c10::once_flag enabled_check_flag_;
+  std::once_flag enabled_check_flag_;
   std::mutex mutex_;
 
  public:
@@ -98,7 +97,7 @@ class NVFuserEnabler {
     if (getCachedNNCNotNVFuser()) {
       return false;
     }
-    c10::call_once(enabled_check_flag_, [&]() {
+    std::call_once(enabled_check_flag_, [&]() {
       // if environment variable is setting the value, we must
       if (!runtime_assigned_fuser_enabled_.has_value() &&
           getCachedFuserEnabledEnvVar().has_value()) {
@@ -900,45 +899,6 @@ RegisterOperators reg_infer_squeeze_size({
               }
             }
             push(stack, IValue(size));
-          };
-        },
-        aliasAnalysisFromSchema()),
-});
-
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-RegisterOperators reg_expand_copy({
-    Operator(
-        "prim::expand_copy(Tensor self, int[] size, *, bool implicit=False) -> Tensor",
-        [](const Node* node) -> Operation {
-          return [node](Stack& stack) {
-            TORCH_CHECK(
-                node->s(attr::name) == "CudaFusionGroup",
-                "expand_copy is only used by nvfuser to identify non-mutating ",
-                "alias ops, should be restored after fusion pass!");
-            IValue self, size, implicit;
-            pop(stack, self, size, implicit);
-            push(
-                stack, at::native::expand(self.toTensor(), size.toIntVector()));
-          };
-        },
-        aliasAnalysisFromSchema()),
-});
-
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-RegisterOperators reg_expand_as_copy({
-    Operator(
-        "prim::expand_as_copy(Tensor self, Tensor other) -> Tensor",
-        [](const Node* node) -> Operation {
-          return [node](Stack& stack) {
-            TORCH_CHECK(
-                node->s(attr::name) == "CudaFusionGroup",
-                "expand_as_copy is only used by nvfuser to identify non-mutating ",
-                "alias ops, should be restored after fusion pass!");
-            IValue self, other;
-            pop(stack, self, other);
-            push(
-                stack,
-                at::native::expand_as(self.toTensor(), other.toTensor()));
           };
         },
         aliasAnalysisFromSchema()),

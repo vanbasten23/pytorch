@@ -1,4 +1,3 @@
-#include <c10/core/SymIntArrayRef.h>
 #include <c10/core/TensorImpl.h>
 #include <c10/core/impl/PyInterpreter.h>
 
@@ -24,7 +23,8 @@ static c10::intrusive_ptr<TensorImpl> noop_detach_fn(
 static void noop_dispatch_fn(
     const PyInterpreter*,
     const c10::OperatorHandle& op,
-    torch::jit::Stack* stack) {
+    torch::jit::Stack* stack,
+    const std::shared_ptr<SafePyObject>& type) {
   TORCH_INTERNAL_ASSERT(
       0,
       "attempted to dispatch (__torch_dispatch__) an operator on Tensor with nontrivial PyObject after corresponding interpreter died");
@@ -62,20 +62,6 @@ static c10::IntArrayRef noop_sizes_fn(const PyInterpreter*, const TensorImpl*) {
       "attempted to call `sizes` on Tensor with nontrivial PyObject after corresponding interpreter died");
 }
 
-static c10::SymIntArrayRef noop_sym_sizes_fn(
-    const PyInterpreter*,
-    const TensorImpl*) {
-  TORCH_INTERNAL_ASSERT(
-      0,
-      "attempted to call `sym_sizes` on Tensor with nontrivial PyObject after corresponding interpreter died");
-}
-
-static c10::Layout noop_layout_fn(const PyInterpreter*, const TensorImpl*) {
-  TORCH_INTERNAL_ASSERT(
-      0,
-      "attempted to call `layout` on Tensor with nontrivial PyObject after corresponding interpreter died");
-}
-
 void PyInterpreter::disarm() noexcept {
   name_fn_ = &noop_name_fn;
   decref_fn_ = &noop_decref_fn;
@@ -86,8 +72,6 @@ void PyInterpreter::disarm() noexcept {
   dim_fn_ = &noop_dim_fn;
   strides_fn_ = &noop_strides_fn;
   sizes_fn_ = &noop_sizes_fn;
-  sym_sizes_fn_ = &noop_sym_sizes_fn;
-  layout_fn_ = &noop_layout_fn;
 }
 
 } // namespace impl

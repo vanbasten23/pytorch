@@ -27,12 +27,6 @@ from .metadata import (
     TensorWriteRequest,
 )
 
-def _trim(tensor: torch.Tensor) -> torch.Tensor:
-    tensor = tensor.detach()
-    if tensor.storage().size() != tensor.numel():
-        return tensor.clone()
-    return tensor
-
 def _create_storage_key(
     storage_key_to_fqn: Dict[str, str],
     fqn: str
@@ -120,6 +114,13 @@ def _compute_sharded_tensor_md(
     for shard_md in tensor.metadata().shards_metadata:
         shard_storage_key = shard_to_storage_key[_get_shard_key(shard_md)]
 
+        shard_size = 1
+        for d in shard_md.shard_sizes:
+            shard_size *= d
+
+        # not particularly great
+        storage_size = shard_size * _get_sharded_tensor_element_size(tensor)
+
         one_smd = ShardStorageMetadata(
             shard_metadata=shard_md,
             storage_key=shard_storage_key,
@@ -182,7 +183,7 @@ def _prepare_sharded_tensor_write(
         shard_storage_key = shard_to_storage_key[_get_shard_key(shard.metadata)]
 
         wr = TensorWriteRequest(
-            tensor=_trim(tensor),
+            tensor=tensor,
             storage_key=shard_storage_key,
         )
         write_requests.append(wr)
@@ -270,7 +271,7 @@ def _prepare_tensor_write(
 
     write_reqs = [
         TensorWriteRequest(
-            tensor=_trim(tensor),
+            tensor=tensor.detach(),
             storage_key=storage_key,
         )
     ]

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import auto, Enum
 from typing import Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple, Union
 
-from torchgen.utils import assert_never, NamespaceHelper
+from torchgen.utils import assert_never
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 #
@@ -454,11 +454,12 @@ class NativeFunction:
         funcs = e.pop("func")
         assert isinstance(funcs, str), f"not a str: {funcs}"
         # only support one level of namespace. E.g., aten::add
-        namespace_helper = NamespaceHelper.from_namespaced_entity(
-            namespaced_entity=funcs, max_level=1
-        )
-        namespace = namespace_helper.get_cpp_namespace(default="aten")
-        func = FunctionSchema.parse(namespace_helper.entity_name)
+        namespaced_funcs = funcs.split("::", 1)
+        if len(namespaced_funcs) == 1:
+            namespace = "aten"
+        else:
+            namespace = namespaced_funcs[0]
+        func = FunctionSchema.parse(namespaced_funcs[-1])
 
         cpp_no_default_args_list = e.pop("cpp_no_default_args", [])
         assert isinstance(cpp_no_default_args_list, list)
@@ -578,20 +579,19 @@ class NativeFunction:
                         f"Dispatch key {dispatch_key} of kernel {v} "
                         "is not a supported dispatch key."
                     )
-                    # We only allow at most 2 levels of namespace for kernels.
+                    # We only allow one level of namespace for kernels and operator.
                     # We will append "native" to a custom kernel namespace.
-                    namespace_helper = NamespaceHelper.from_namespaced_entity(
-                        v, max_level=2
-                    )
-                    kernel_namespace = namespace_helper.get_cpp_namespace(default="at")
+                    tokens = v.split("::", 1)
                     # Why is 'structured' included? External backends (e.g.
                     # XLA) opt into which ops are structured independently
                     # of which in-tree ops are structured
                     dispatch[dispatch_key] = BackendMetadata(
-                        kernel=namespace_helper.entity_name,
+                        kernel=tokens[-1],
                         structured=structured
                         and is_structured_dispatch_key(dispatch_key),
-                        cpp_namespace=(kernel_namespace + "::native"),
+                        cpp_namespace=(tokens[0] + "::native")
+                        if len(tokens) > 1
+                        else DEFAULT_KERNEL_NAMESPACE,
                     )
                     if (
                         dispatch_key is DispatchKey.CompositeImplicitAutograd
@@ -661,11 +661,6 @@ class NativeFunction:
         # Program the BackendIndex for the implicit dispatch entry from ufunc
         if ufunc_inner_loop:
             assert structured, "ufunc must be structured"
-
-            # Delay import ufunc here to avoid circular import issue
-            # See: https://github.com/pytorch/pytorch/issues/81294
-            import torchgen.api.ufunc as ufunc
-
             for dispatch_key in UFUNC_DISPATCH_KEYS:
                 assert (
                     dispatch_key not in dispatch
@@ -877,8 +872,6 @@ class NativeFunctionsGroup:
         if self.mutable is not None:
             assert self.mutable.func.kind() == SchemaKind.mutable
             assert self.mutable.namespace == self.functional.namespace
-            # See Note [Overload Ambiguity With Functional Variants]
-            assert self.functional.func.name.name.functional_overload
 
         if self.structured:
             # For now, structured composite kernels are not supported (need some
@@ -908,7 +901,7 @@ class NativeFunctionsGroup:
             raise RuntimeError(
                 f"The codegen expects to be able to generate '{generated_fns_str}'."
                 f" To do so, it expects a line: 'autogen: {generated_fns_str}'."
-                f" Instead, it found 'autogen: {expected_generated_fns_str}'"
+                f" Instead, it found 'autogen: {generated_fns_str}'"
             )
 
     def signature(self) -> "FunctionSchema":
@@ -2142,26 +2135,6 @@ class BaseOperatorName:
     base: str
     inplace: bool
     dunder_method: bool
-    # Note [Overload Ambiguity With Functional Variants]
-    # A handful of operators have both a "mutable" and a "functional" variant.
-    # (native_batch_norm is a good example, although this isn't the case today).
-    # For those operators, the mutable and functional variant take in the same set of
-    # arguments, but have different alias annotations.
-    # this makes it ambiguous when you try to resolve an OverloadPacket into an overload,
-    # given a set of input arguments.
-    #
-    # So instead of making the "functional" variant in this case a real overload, e.g:
-    #   native_batch_norm (mutable variant)
-    #   native_batch_norm.functional (functional variant)
-    # we make it a new base operator,
-    #   native_batch_norm_functional (functional variant)
-    #
-    # In an ideal world, we would probably invert this so the operators were:
-    #   native_batch_norm.mutable (mutable variant)
-    #   native_batch_norm (functional variant)
-    #
-    # Doing that is BC-breaking though, so we're stuck with the above modeling.
-    functional_overload: bool = False
 
     @staticmethod
     def parse(op: str) -> "BaseOperatorName":
@@ -2192,24 +2165,7 @@ class BaseOperatorName:
                 base = base[:-1]
             else:
                 inplace = False
-
-        # See Note [Overload Ambiguity With Functional Variants]
-        functional_suffix = "_functional"
-        if base.endswith(functional_suffix):
-            functional_overload = True
-            base = base[: -len(functional_suffix)]
-            # This seems complicated and unnecessary, so banning dunder methods
-            # for now on ops that have a functional + mutable variant (like native_batch_norm).
-            assert not dunder_method and not inplace
-        else:
-            functional_overload = False
-
-        r = BaseOperatorName(
-            base=base,
-            inplace=inplace,
-            dunder_method=dunder_method,
-            functional_overload=functional_overload,
-        )
+        r = BaseOperatorName(base=base, inplace=inplace, dunder_method=dunder_method)
         assert str(r) == op, f"{str(r)} != {op}"
         return r
 
@@ -2218,13 +2174,7 @@ class BaseOperatorName:
             i = "i" if self.inplace else ""
             return f"__{i}{self.base}__"
         else:
-            i = (
-                "_"
-                if self.inplace
-                else "_functional"
-                if self.functional_overload
-                else ""
-            )
+            i = "_" if self.inplace else ""
             return f"{self.base}{i}"
 
 
@@ -2475,3 +2425,6 @@ class Precompute:
             replace_list.append(f"{kernel_param} -> {replacements}")
 
         return replace_list
+
+
+import torchgen.api.ufunc as ufunc

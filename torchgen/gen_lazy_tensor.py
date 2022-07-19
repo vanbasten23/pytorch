@@ -1,39 +1,45 @@
+import pathlib
 import argparse
 import os
-import pathlib
 import re
-from collections import Counter, namedtuple
+import yaml
+from collections import namedtuple, Counter
 from typing import (
     Any,
-    Callable,
+    List,
     Dict,
+    Tuple,
+    Union,
+    Sequence,
+    Optional,
+    Callable,
     Iterable,
     Iterator,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
     Type,
-    Union,
 )
-
-import yaml
-
-import torchgen.dest as dest
-
-from torchgen.api.lazy import setValueT
 from torchgen.api.types import BaseCppType
 from torchgen.dest.lazy_ir import GenLazyIR, GenTSLazyIR
-from torchgen.gen import get_grouped_native_functions, parse_native_yaml
+from torchgen.gen import (
+    get_grouped_native_functions,
+    parse_native_yaml,
+    NamespaceHelper,
+)
 
-from torchgen.model import NativeFunction, NativeFunctionsGroup, OperatorName
+from torchgen.api.lazy import setValueT
+
+from torchgen.model import (
+    NativeFunction,
+    NativeFunctionsGroup,
+    OperatorName,
+)
 from torchgen.selective_build.selector import SelectiveBuilder
-from torchgen.utils import concatMap, FileManager, NamespaceHelper, YamlLoader
+from torchgen.utils import concatMap, YamlLoader, FileManager
+import torchgen.dest as dest
 from .gen_backend_stubs import (
-    error_on_missing_kernels,
-    gen_dispatcher_registrations,
-    gen_dispatchkey_nativefunc_headers,
     parse_backend_yaml,
+    error_on_missing_kernels,
+    gen_dispatchkey_nativefunc_headers,
+    gen_dispatcher_registrations,
 )
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #

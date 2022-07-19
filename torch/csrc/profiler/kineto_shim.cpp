@@ -48,15 +48,6 @@ const DeviceAndResource kineto_ids() {
 #endif // USE_KINETO
 }
 
-void addMetadata(
-    activity_t* activity,
-    const std::string& key,
-    const std::string& value) {
-#ifdef USE_KINETO
-  activity->addMetadata(key, value);
-#endif // USE_KINETO
-}
-
 TraceWrapper::TraceWrapper(const int64_t start_time, const std::string& name)
 #ifdef USE_KINETO
     : cpu_trace_(std::make_unique<libkineto::CpuTraceBuffer>()) {
@@ -69,17 +60,38 @@ TraceWrapper::TraceWrapper(const int64_t start_time, const std::string& name)
 }
 #endif // USE_KINETO
 
-TraceWrapper::~TraceWrapper() = default;
+#ifdef USE_KINETO
+namespace {
+libkineto::ActivityType toActivityType(const KinetoActivityType type) {
+  switch (type) {
+    case KinetoActivityType::CPU_OP:
+      return libkineto::ActivityType::CPU_OP;
+    case KinetoActivityType::CPU_INSTANT_EVENT:
+      return libkineto::ActivityType::CPU_INSTANT_EVENT;
+    case KinetoActivityType::PYTHON_FUNCTION:
+      return libkineto::ActivityType::PYTHON_FUNCTION;
+    default:
+      TORCH_INTERNAL_ASSERT(
+          type == KinetoActivityType::USER_ANNOTATION,
+          "Invalid KinetoActivityType: ",
+          (int)type);
+      return libkineto::ActivityType::USER_ANNOTATION;
+  }
+}
+} // namespace
+#endif // USE_KINETO
 
-activity_t* TraceWrapper::addCPUActivity(
+void TraceWrapper::addCPUActivity(
     const std::string& name,
-    const libkineto::ActivityType type,
+    const KinetoActivityType kineto_type,
     const DeviceAndResource device_and_resource,
     const uint64_t correlation_id,
     const int64_t start_time,
-    const int64_t end_time) {
+    const int64_t end_time,
+    const annotation_t& annotations) {
 #ifdef USE_KINETO
   TORCH_CHECK((bool)(*this), "Cannot add event to non-existent trace.");
+  auto type = toActivityType(kineto_type);
   cpu_trace_->emplace_activity(cpu_trace_->span, type, name);
   auto& act = libkineto::CpuTraceBuffer::toRef(cpu_trace_->activities.back());
   act.device = device_and_resource.device;
@@ -89,9 +101,9 @@ activity_t* TraceWrapper::addCPUActivity(
   if (type != libkineto::ActivityType::CPU_INSTANT_EVENT) {
     act.endTime = end_time;
   }
-  return cpu_trace_->activities.back().get();
-#else
-  return nullptr;
+  for (const auto& i : annotations) {
+    act.addMetadata(i.first, i.second);
+  }
 #endif // USE_KINETO
 }
 
@@ -111,7 +123,7 @@ TraceWrapper::operator bool() const {
 }
 
 ActivityTraceWrapper::ActivityTraceWrapper(
-    std::unique_ptr<interface_trace_t>&& trace)
+    std::unique_ptr<interface_trace_t> trace)
     : trace_(std::move(trace)), saved_{false} {}
 
 ActivityTraceWrapper::operator bool() const {

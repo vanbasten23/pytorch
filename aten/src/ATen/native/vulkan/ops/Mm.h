@@ -28,7 +28,8 @@ Tensor linear_context_run(
     const c10::impl::GenericList& packed_context,
     const c10::impl::GenericList& unpacked_context,
     const float alpha,
-    const float beta);
+    const float beta,
+    const std::string& op_name);
 
 c10::intrusive_ptr<VulkanOpContext> create_linear_context(
     Tensor&& weight,
@@ -47,7 +48,7 @@ class LinearOpContext final : public torch::jit::CustomClassHolder {
 
   using State = std::tuple<Tensor, c10::optional<Tensor>>;
 
-  Tensor run(const Tensor& input, float beta, float alpha) const;
+  Tensor run(const Tensor& input, float beta, float alpha, const std::string& op_name) const;
   State unpack() const;
 
  private:

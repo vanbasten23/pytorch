@@ -89,7 +89,6 @@ try:
     from quantization.fx.test_model_report_fx import TestFxModelReportDetectDynamicStatic  # noqa: F401
     from quantization.fx.test_model_report_fx import TestFxModelReportClass  # noqa: F401
     from quantization.fx.test_model_report_fx import TestFxDetectInputWeightEqualization  # noqa: F401
-    from quantization.fx.test_model_report_fx import TestFxDetectOutliers  # noqa: F401
 except ImportError:
     pass
 

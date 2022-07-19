@@ -1,10 +1,4 @@
 #include <ATen/ATen.h>
-#include <ATen/cuda/CUDAConfig.h>
-#if AT_CUDNN_ENABLED()
-
-#include <ATen/native/cudnn/Macros.h>
-
-#endif
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <ATen/cuda/CachingHostAllocator.h>
@@ -17,7 +11,6 @@
 #ifdef USE_NCCL
 #include <torch/csrc/cuda/python_nccl.h>
 #endif
-#include <c10/util/CallOnce.h>
 #include <c10/util/irange.h>
 
 #include <torch/csrc/CudaIPCTypes.h>
@@ -48,7 +41,7 @@ static bool in_bad_fork = false; // True for children forked after cuda init
 // Called in the forked child if cuda has already been initialized
 static void forked_child() {
   in_bad_fork = true;
-  torch::utils::set_requires_cuda_init(true);
+  torch::utils::set_run_yet_variable_to_false();
 }
 #endif
 
@@ -57,8 +50,8 @@ static void forked_child() {
 // has some working functions (e.g. device_count) but cannot fully initialize.
 static void poison_fork() {
 #ifndef WIN32
-  static c10::once_flag flag;
-  c10::call_once(flag, [] { pthread_atfork(nullptr, nullptr, forked_child); });
+  static std::once_flag flag;
+  std::call_once(flag, [] { pthread_atfork(nullptr, nullptr, forked_child); });
 #endif
 }
 
@@ -733,32 +726,6 @@ static PyObject* THCPModule_isCurrentStreamCapturing_wrap(
   END_HANDLE_TH_ERRORS
 }
 
-PyObject* THCPModule_setBenchmarkLimitCuDNN(PyObject* _unused, PyObject* arg) {
-  THPUtils_assert(
-      THPUtils_checkLong(arg),
-      "set_benchmark_limit_cudnn expects an int, "
-      "but got %s",
-      THPUtils_typename(arg));
-  auto benchmark_limit = static_cast<int>(THPUtils_unpackLong(arg));
-#if defined(USE_ROCM)
-  TORCH_WARN_ONCE(
-      "cuDNN Benchmark limit is not supported in MIOpen and will have no effect.");
-#endif
-#if AT_CUDNN_ENABLED()
-#if HAS_CUDNN_V8()
-  at::globalContext().setBenchmarkLimitCuDNN(benchmark_limit);
-#else
-  TORCH_WARN_ONCE(
-      "cuDNN Benchmark limit is not supported with cuDNN v7 API and will have no effect.");
-#endif
-#endif
-  Py_RETURN_NONE;
-}
-
-PyObject* THCPModule_benchmarkLimitCuDNN(PyObject* _unused, PyObject* noargs) {
-  return THPUtils_packInt32(at::globalContext().benchmarkLimitCuDNN());
-}
-
 // NOLINTNEXTLINE(modernize-avoid-c-arrays,
 // cppcoreguidelines-avoid-non-const-global-variables,
 // cppcoreguidelines-avoid-c-arrays)
@@ -845,14 +812,6 @@ static struct PyMethodDef _THCPModule_methods[] = {
     {"_cuda_jiterator_compile_and_launch_kernel",
      THCPModule_cudaJiteratorCompileAndLaunchKernel,
      METH_VARARGS,
-     nullptr},
-    {"_cuda_get_cudnn_benchmark_limit",
-     THCPModule_benchmarkLimitCuDNN,
-     METH_NOARGS,
-     nullptr},
-    {"_cuda_set_cudnn_benchmark_limit",
-     THCPModule_setBenchmarkLimitCuDNN,
-     METH_O,
      nullptr},
 #ifdef USE_NCCL
     {"_nccl_version", THCPModule_nccl_version, METH_NOARGS, nullptr},

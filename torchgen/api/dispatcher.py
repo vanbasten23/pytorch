@@ -1,9 +1,3 @@
-import itertools
-from typing import List, Sequence, Union
-
-from torchgen.api import cpp
-
-from torchgen.api.types import ArgName, Binding, CType, NamedCType
 from torchgen.model import (
     Argument,
     FunctionSchema,
@@ -12,7 +6,13 @@ from torchgen.model import (
     TensorOptionsArguments,
     Type,
 )
-from torchgen.utils import assert_never, concatMap
+
+from torchgen.api.types import ArgName, Binding, NamedCType, CType
+from torchgen.api import cpp
+from torchgen.utils import concatMap, assert_never
+
+import itertools
+from typing import Sequence, List, Union
 
 # This file describes the translation of JIT schema to the dispatcher
 # API, the *unboxed* calling convention by which invocations through

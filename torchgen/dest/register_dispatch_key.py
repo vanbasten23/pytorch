@@ -1,44 +1,42 @@
-import itertools
-import textwrap
-from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
-
+import itertools
 from typing_extensions import Literal
+from dataclasses import dataclass
+import textwrap
 
-import torchgen.api.cpp as cpp
-import torchgen.api.meta as meta
-import torchgen.api.structured as structured
-from torchgen.api.translate import translate
+from torchgen.context import method_with_native_function, native_function_manager
+from torchgen.utils import Target, mapMaybe, assert_never
+from torchgen.model import (
+    DispatchKey,
+    NativeFunction,
+    NativeFunctionsGroup,
+    SchemaKind,
+    TensorOptionsArguments,
+    DeviceCheckType,
+    Argument,
+    is_cuda_dispatch_key,
+    BackendIndex,
+    gets_generated_out_inplace_wrapper,
+)
 from torchgen.api.types import (
     BaseCType,
     Binding,
     ConstRefCType,
     CppSignature,
     CppSignatureGroup,
-    DispatcherSignature,
     Expr,
-    kernel_signature,
     MutRefCType,
-    NamedCType,
+    kernel_signature,
     NativeSignature,
     tensorT,
+    NamedCType,
+    DispatcherSignature,
 )
-
-from torchgen.context import method_with_native_function, native_function_manager
-from torchgen.model import (
-    Argument,
-    BackendIndex,
-    DeviceCheckType,
-    DispatchKey,
-    gets_generated_out_inplace_wrapper,
-    is_cuda_dispatch_key,
-    NativeFunction,
-    NativeFunctionsGroup,
-    SchemaKind,
-    TensorOptionsArguments,
-)
+import torchgen.api.meta as meta
+import torchgen.api.cpp as cpp
+import torchgen.api.structured as structured
+from torchgen.api.translate import translate
 from torchgen.selective_build.selector import SelectiveBuilder
-from torchgen.utils import assert_never, mapMaybe, Target
 
 
 def gen_registration_headers(

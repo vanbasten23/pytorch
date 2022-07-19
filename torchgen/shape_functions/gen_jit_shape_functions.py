@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import os
-from itertools import chain
 from pathlib import Path
+from itertools import chain
 
 from torch.jit._shape_functions import (
-    bounded_compute_graph_mapping,
     shape_compute_graph_mapping,
+    bounded_compute_graph_mapping,
 )
 
 SHAPE_HEADER = r"""

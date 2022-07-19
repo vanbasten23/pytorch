@@ -6,9 +6,7 @@ from torch.utils.data.datapipes.dataframe import dataframe_wrapper as df_wrapper
 from torch.utils.data.datapipes.utils.common import (
     _check_unpickable_fn,
     _deprecation_warning,
-    StreamWrapper,
 )
-
 
 __all__ = ["FilterIterDataPipe", ]
 
@@ -83,8 +81,6 @@ class FilterIterDataPipe(IterDataPipe[T_co]):
             filtered = self._returnIfTrue(data)
             if self._isNonEmpty(filtered):
                 yield filtered
-            else:
-                StreamWrapper.close_streams(data)
 
     def _returnIfTrue(self, data):
         condition = self._apply_filter_fn(data)

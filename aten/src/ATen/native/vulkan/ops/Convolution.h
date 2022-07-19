@@ -14,6 +14,7 @@ enum Conv2dMethod {
   Conv2dDepthwise,
   Conv2dPointwise,
   Conv2dSlidingWindow,
+  Conv2dWinograd_2_3,
 };
 
 //  private:

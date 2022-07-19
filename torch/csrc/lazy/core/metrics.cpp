@@ -2,7 +2,6 @@
 
 #include <c10/util/Logging.h>
 #include <c10/util/irange.h>
-#include <torch/csrc/lazy/backend/backend_interface.h>
 #include <torch/csrc/lazy/core/config.h>
 #include <torch/csrc/lazy/core/helpers.h>
 #include <torch/csrc/lazy/core/util.h>
@@ -347,9 +346,6 @@ std::string CreateMetricReport() {
   arena->ForEachCounter([&ss](const std::string& name, CounterData* data) {
     EmitCounterInfo(name, data, &ss);
   });
-
-  // Append the backend metrics report
-  ss << getBackend()->CreateMetricReport();
   return ss.str();
 }
 

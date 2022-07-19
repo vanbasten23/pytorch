@@ -152,7 +152,6 @@ enum class UnaryOpType {
   Floor,
   Frac,
   Gelu,
-  Imag,
   Silu,
   Lgamma,
   Log,
@@ -162,7 +161,6 @@ enum class UnaryOpType {
   BitCast,
   Neg,
   RandLike,
-  Real,
   Reciprocal,
   Relu,
   Rsqrt,
@@ -305,13 +303,7 @@ static constexpr std::array<IdMappingMode, 3> kIdMappingModes = {
     IdMappingMode::EXACT,
     IdMappingMode::LOOP};
 
-// Used to annotate the special memory intrinsics that a loadstore
-//  op will be lowered to.
 enum class LoadStoreOpType { LdMatrix, LdMatrixTranspose, CpAsync };
-
-// Used to label what part of the double buffered iterdomain
-//  a for loop is materializing.
-enum class DoubleBufferLoopStage { NotApplicable, Prolog, Main, Epilog };
 
 // Returns if function needs an f suffix on the operator when operating on a
 // float value i.e. sin->sinf
@@ -340,9 +332,6 @@ TORCH_CUDA_CU_API std::ostream& operator<<(std::ostream&, const IdMappingMode);
 TORCH_CUDA_CU_API std::ostream& operator<<(
     std::ostream&,
     const LoadStoreOpType);
-TORCH_CUDA_CU_API std::ostream& operator<<(
-    std::ostream&,
-    const DoubleBufferLoopStage);
 
 std::string stringifyBooleanOp(const UnaryOpType);
 std::string stringifyBooleanOp(const BinaryOpType);

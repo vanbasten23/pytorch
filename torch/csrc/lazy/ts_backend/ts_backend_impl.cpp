@@ -53,10 +53,6 @@ class TSBackendImpl : public torch::lazy::BackendImplInterface {
     return builder;
   }
 
-  std::string CreateMetricReport() const override {
-    return "TSBackendImpl: N/A";
-  }
-
   std::unique_ptr<torch::lazy::LoweringContext> CreateLoweringContext(
       const std::string& name,
       torch::lazy::BackendDevice device,

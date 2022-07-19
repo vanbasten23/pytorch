@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
-
-from torchgen.api import cpp
+from typing import Optional, Union, Sequence, Set, List, Dict, Tuple
 
 from torchgen.api.types import Binding, CppSignature, CppSignatureGroup
+from torchgen.api import cpp
 from torchgen.gen import pythonify_default
 from torchgen.model import (
     Argument,

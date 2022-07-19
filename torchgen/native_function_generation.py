@@ -11,7 +11,6 @@ from torchgen.model import (
     Argument,
     BackendIndex,
     BackendMetadata,
-    BaseOperatorName,
     BaseTy,
     BaseType,
     DEFAULT_KERNEL_NAMESPACE,
@@ -194,20 +193,14 @@ def generate_function(
         # The new "functional" NativeFunction has:
         # - any mutable arguments have been converted into (immutable) returns.
         #   (if a mutable argument was not also a return, it gets converted to one)
-        # - "_functional" appended to the base name, ONLY IF this op has a mutable variant.
-        #   See Note [Overload Ambiguity With Functional Variants]
+        # - a "functional" overload name.
         # The default grouping logic in signature() actually already does this,
         # so we can piggy-back off it (but we still want return names)
         func = f.func.signature(keep_return_names=True).with_name(
-            OperatorName(
-                name=BaseOperatorName(
-                    base=f.func.name.name.base,
-                    inplace=False,
-                    dunder_method=f.func.name.name.dunder_method,
-                    # See Note [Overload Ambiguity With Functional Variants]
-                    functional_overload=f.func.kind() == SchemaKind.mutable,
-                ),
-                overload_name=f.func.name.overload_name,
+            f.func.name.remove_inplace().with_overload(
+                "functional"
+                if not f.func.name.overload_name
+                else f"{f.func.name.overload_name}_functional"
             )
         )
     elif k == SchemaKind.out:

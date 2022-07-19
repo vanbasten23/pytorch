@@ -157,11 +157,18 @@ class TORCH_API TensorBase {
   }
 
   c10::SymInt sym_size(int64_t dim) const {
-    return impl_->sym_size(dim);
+    const auto sizes = this->sym_sizes();
+    const auto ndim = static_cast<int64_t>(sizes.size());
+    // false is passed to maybe_wrap_dim so behavior is identical to array access (but with wrapping)
+    return sizes[c10::maybe_wrap_dim(dim, ndim, /*wrap_scalar=*/false)];
+
   }
 
   int64_t size(int64_t dim) const {
-    return impl_->size(dim);
+    const auto sizes = this->sizes();
+    const auto ndim = static_cast<int64_t>(sizes.size());
+    // false is passed to maybe_wrap_dim so behavior is identical to array access (but with wrapping)
+    return sizes[c10::maybe_wrap_dim(dim, ndim, /*wrap_scalar=*/false)];
   }
 
   int64_t stride(int64_t dim) const {
@@ -345,12 +352,12 @@ class TORCH_API TensorBase {
   }
 
   /// Returns a `Tensor`'s layout.
-  Layout layout() const {
+  Layout layout() const noexcept {
     return impl_->layout();
   }
 
   /// Returns a `Tensor`'s dtype (`TypeMeta`).
-  caffe2::TypeMeta dtype() const {
+  caffe2::TypeMeta dtype() const noexcept {
     return impl_->dtype();
   }
 
@@ -718,9 +725,9 @@ class TORCH_API TensorBase {
   //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   template <typename T>
-  using hook_return_void_t = std::enable_if_t<std::is_void<typename c10::invoke_result_t<T&, TensorBase>>::value, unsigned>;
+  using hook_return_void_t = std::enable_if_t<std::is_void<typename std::result_of<T&(TensorBase)>::type>::value, unsigned>;
   template <typename T>
-  using hook_return_var_t = std::enable_if_t<std::is_same<typename c10::invoke_result_t<T&, TensorBase>, TensorBase>::value, unsigned>;
+  using hook_return_var_t = std::enable_if_t<std::is_same<typename std::result_of<T&(TensorBase)>::type, TensorBase>::value, unsigned>;
 
   /// Registers a backward hook.
   ///

@@ -1,8 +1,6 @@
 #pragma once
 
 #include <c10/core/Device.h>
-#include <c10/core/Layout.h>
-#include <c10/core/SymIntArrayRef.h>
 #include <c10/macros/Macros.h>
 #include <c10/util/ArrayRef.h>
 #include <c10/util/intrusive_ptr.h>
@@ -127,15 +125,14 @@ struct C10_API PyInterpreter {
   using dispatch_sig = void(
       const PyInterpreter*,
       const c10::OperatorHandle&,
-      torch::jit::Stack* stack);
+      torch::jit::Stack* stack,
+      // This is a Tensor subclass type object
+      const std::shared_ptr<SafePyObject>& type);
   using is_contiguous_sig = bool(const PyInterpreter*, const TensorImpl*);
   using device_sig = c10::Device(const PyInterpreter*, const TensorImpl*);
   using dim_sig = int64_t(const PyInterpreter*, const TensorImpl*);
   using strides_sig = c10::IntArrayRef(const PyInterpreter*, const TensorImpl*);
   using sizes_sig = c10::IntArrayRef(const PyInterpreter*, const TensorImpl*);
-  using sym_sizes_sig =
-      c10::SymIntArrayRef(const PyInterpreter*, const TensorImpl*);
-  using layout_sig = c10::Layout(const PyInterpreter*, const TensorImpl*);
 
   PyInterpreter(
       name_sig* name_fn,
@@ -146,9 +143,7 @@ struct C10_API PyInterpreter {
       device_sig* device_fn,
       dim_sig* dim_fn,
       strides_sig* strides,
-      sizes_sig* sizes,
-      sym_sizes_sig* sym_sizes,
-      layout_sig* layout)
+      sizes_sig* sizes)
       : name_fn_(name_fn),
         decref_fn_(decref_fn),
         detach_fn_(detach),
@@ -157,9 +152,7 @@ struct C10_API PyInterpreter {
         device_fn_(device_fn),
         dim_fn_(dim_fn),
         strides_fn_(strides),
-        sizes_fn_(sizes),
-        sym_sizes_fn_(sym_sizes),
-        layout_fn_(layout) {}
+        sizes_fn_(sizes) {}
 
   name_sig* name_fn_;
   decref_sig* decref_fn_;
@@ -170,8 +163,6 @@ struct C10_API PyInterpreter {
   dim_sig* dim_fn_;
   strides_sig* strides_fn_;
   sizes_sig* sizes_fn_;
-  sym_sizes_sig* sym_sizes_fn_;
-  layout_sig* layout_fn_;
 
   // UBSAN suppression fixes: "call to function
   // (anonymous namespace)::concrete_decref_fn(c10::impl::PyInterpreter const*,
@@ -201,8 +192,9 @@ struct C10_API PyInterpreter {
   // Invoke the Python boxed fallback dispatch to go back into Python
   __ubsan_ignore_function__ void dispatch(
       const c10::OperatorHandle& op,
-      torch::jit::Stack* stack) const {
-    return (*dispatch_fn_)(this, op, stack);
+      torch::jit::Stack* stack,
+      const std::shared_ptr<SafePyObject>& type) const {
+    return (*dispatch_fn_)(this, op, stack, type);
   }
 
   __ubsan_ignore_function__ bool is_contiguous(const TensorImpl* self) const {
@@ -225,15 +217,6 @@ struct C10_API PyInterpreter {
   __ubsan_ignore_function__ c10::IntArrayRef sizes(
       const TensorImpl* self) const {
     return (*sizes_fn_)(this, self);
-  }
-
-  __ubsan_ignore_function__ c10::SymIntArrayRef sym_sizes(
-      const TensorImpl* self) const {
-    return (*sym_sizes_fn_)(this, self);
-  }
-
-  __ubsan_ignore_function__ c10::Layout layout(const TensorImpl* self) const {
-    return (*layout_fn_)(this, self);
   }
 
   // Disarm this PyInterpreter, making all of its methods noops.

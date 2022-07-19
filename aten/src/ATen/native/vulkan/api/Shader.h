@@ -3,6 +3,7 @@
 #ifdef USE_VULKAN_API
 
 #include <ATen/native/vulkan/api/Common.h>
+#include <ATen/native/vulkan/api/Cache.h>
 #include <ATen/native/vulkan/api/Utils.h>
 #include <c10/util/hash.h>
 
@@ -11,158 +12,274 @@ namespace native {
 namespace vulkan {
 namespace api {
 
-struct ShaderSource final {
-  enum class Type { GLSL, SPIRV } type;
+//
+// This struct defines shader, and shader layout, caches intended to minimize
+// redundant object reconstructions at the cost of extra memory consumption.
+//
+// A shader is a small, usually simple, program that typically runs on a GPU as
+// part of the graphics or compute pipelines.  The shader layout defines the
+// interface between that program and the outside world, namely what the host
+// (i.e. CPU) sees as configurable parameters of the said shader per dispatch.
+// If the shader was a regular function, the shader layout would have been its
+// function prototype declaring the number and type of its arguments.
+//
+// Furthermore, shader layouts, or as Vulkan calls them descriptor set layouts,
+// define the blueprint out of which descriptor sets are instantiated.  Descriptor
+// sets themselves, bundle the input to and output from a shader and contain
+// pointers to GPU, and GPU accessible system, memory locations where the actual
+// resources reside.  Shader layouts are also used in creation of Vulkan pipeline
+// layouts, while multiple shaders are bundled together to form a portion of the
+// the monolithic state objects that are Vulkan pipelines.
+//
+// This struct defines the facilities required to create, compile, reuse,
+// and destruct the aforementioned Vulkan objects.
+//
 
-  union {
-    struct {
-      const char* src; // Null-terminated
-      uint32_t unused; // padding
-    } glsl;
-    struct {
-      const uint32_t* bin;
-      uint32_t size;
-    } spirv;
-  } src_code;
+struct Shader final {
+  //
+  // Layout
+  //
 
-  std::string kernel_name;
-  explicit ShaderSource(std::string name, const char* glsl);
-  explicit ShaderSource(
-      std::string name,
-      const uint32_t* spirv,
-      uint32_t bytes);
-};
+  struct Layout final {
+    /*
+      Signature
+    */
 
-class ShaderLayout final {
- public:
-  using Signature = c10::SmallVector<VkDescriptorType, 6u>;
+    typedef c10::SmallVector<VkDescriptorType, 6u> Signature;
 
-  explicit ShaderLayout(const VkDevice, const Signature&);
+    /*
+      Descriptor
+    */
 
-  ShaderLayout(const ShaderLayout&) = delete;
-  ShaderLayout& operator=(const ShaderLayout&) = delete;
+    struct Descriptor final {
+      Signature signature;
+    };
 
-  ShaderLayout(ShaderLayout&&) noexcept;
-  ShaderLayout& operator=(ShaderLayout&&) = delete;
+    /*
+      Factory
+    */
 
-  ~ShaderLayout();
+    class Factory final {
+     public:
+      explicit Factory(const GPU& gpu);
 
- private:
-  VkDevice device_;
-  VkDescriptorSetLayout handle_;
+      typedef Layout::Descriptor Descriptor;
+      typedef VK_DELETER(DescriptorSetLayout) Deleter;
+      typedef api::Handle<VkDescriptorSetLayout, Deleter> Handle;
 
- public:
-  VkDescriptorSetLayout handle() const {
-    return handle_;
-  }
+      struct Hasher {
+        size_t operator()(const Descriptor& descriptor) const;
+      };
 
-  // We need to define a custom swap function since this class
-  // does not allow for move assignment. The swap function will
-  // be used in the hash map.
-  friend void swap(ShaderLayout& lhs, ShaderLayout& rhs) noexcept;
-};
+      Handle operator()(const Descriptor& descriptor) const;
 
-class ShaderModule final {
- public:
-  explicit ShaderModule(const VkDevice device, const ShaderSource& source);
+     private:
+      VkDevice device_;
+    };
 
-  ShaderModule(const ShaderModule&) = delete;
-  ShaderModule& operator=(const ShaderModule&) = delete;
+    struct Object final {
+      VkDescriptorSetLayout handle;
+      Signature signature;
 
-  ShaderModule(ShaderModule&&) noexcept;
-  ShaderModule& operator=(ShaderModule&&) = delete;
+      operator bool() const;
+    };
 
-  ~ShaderModule();
+    /*
+      Cache
+    */
 
- private:
-  VkDevice device_;
-  VkShaderModule handle_;
+    class Cache final {
+     public:
+      explicit Cache(Factory factory);
+      Cache(const Cache&) = delete;
+      Cache& operator=(const Cache&) = delete;
+      Cache(Cache&&) = default;
+      Cache& operator=(Cache&&) = default;
+      ~Cache() = default;
 
- public:
-  inline VkShaderModule handle() const {
-    return handle_;
-  }
+      Object retrieve(const Descriptor& descriptor);
+      void purge();
 
-  // We need to define a custom swap function since this class
-  // does not allow for move assignment. The swap function will
-  // be used in the hash map.
-  friend void swap(ShaderModule& lhs, ShaderModule& rhs) noexcept;
-};
+     private:
+      api::Cache<Factory> cache_;
+    } cache;
 
-class ShaderLayoutCache final {
- public:
-  explicit ShaderLayoutCache(const VkDevice device);
-
-  ShaderLayoutCache(const ShaderLayoutCache&) = delete;
-  ShaderLayoutCache& operator=(const ShaderLayoutCache&) = delete;
-
-  ShaderLayoutCache(ShaderLayoutCache&&) noexcept;
-  ShaderLayoutCache& operator=(ShaderLayoutCache&&) = delete;
-
-  ~ShaderLayoutCache();
-
-  using Key = ShaderLayout::Signature;
-  using Value = ShaderLayout;
-
-  struct Hasher {
-    inline size_t operator()(const ShaderLayout::Signature& signature) const {
-      size_t hashed = 0u;
-
-      for (const VkDescriptorType type : signature) {
-        hashed = c10::hash_combine(hashed, c10::get_hash(type));
-      }
-
-      return hashed;
+    explicit Layout(const GPU& gpu)
+      : cache(Factory(gpu)) {
     }
+  } layout;
+
+  //
+  // Work Group
+  //
+
+  typedef utils::uvec3 WorkGroup;
+
+  /*
+    Descriptor
+  */
+
+  struct Descriptor final {
+    enum class Type {
+      Source,
+      Binary,
+    } type;
+
+    union {
+      struct {
+        const char* glsl; // Null-terminated
+        uint32_t unused;  // Padding
+      } source;
+
+      struct {
+        const uint32_t* spirv;
+        uint32_t size;    // Bytes
+      } binary;
+    } shader;
+
+    Descriptor(const char* glsl);
+    Descriptor(const uint32_t* spirv, uint32_t bytes);
   };
 
- private:
-  // Multiple threads could potentially be adding entries into the cache, so use
-  // a mutex to manage access
-  std::mutex cache_mutex_;
+  /*
+    Factory
+  */
 
-  VkDevice device_;
-  ska::flat_hash_map<Key, Value, Hasher> cache_;
+  class Factory final {
+   public:
+    explicit Factory(const GPU& gpu);
+    Factory(const Factory&) = delete;
+    Factory& operator=(const Factory&) = delete;
+    Factory(Factory&&);
+    Factory& operator=(Factory&&);
+    ~Factory();
 
- public:
-  VkDescriptorSetLayout retrieve(const Key&);
-  void purge();
-};
+    typedef Shader::Descriptor Descriptor;
+    typedef VK_DELETER(ShaderModule) Deleter;
+    typedef api::Handle<VkShaderModule, Deleter> Handle;
 
-class ShaderCache final {
- public:
-  explicit ShaderCache(const VkDevice device);
+    struct Hasher {
+      size_t operator()(const Descriptor& descriptor) const;
+    };
 
-  ShaderCache(const ShaderCache&) = delete;
-  ShaderCache& operator=(const ShaderCache&) = delete;
+    Handle operator()(const Descriptor& descriptor) const;
 
-  ShaderCache(ShaderCache&&) noexcept;
-  ShaderCache& operator=(ShaderCache&&) = delete;
-
-  ~ShaderCache();
-
-  using Key = ShaderSource;
-  using Value = ShaderModule;
-
-  struct Hasher {
-    inline size_t operator()(const ShaderSource& source) const {
-      return c10::get_hash(
-          source.type, source.src_code.spirv.bin, source.src_code.spirv.size);
-    }
+   private:
+    VkDevice device_;
+    struct Compiler;
+    std::unique_ptr<Compiler> compiler_;
   };
 
- private:
-  // Multiple threads could potentially be adding entries into the cache, so use
-  // a mutex to manage access
-  std::mutex cache_mutex_;
+  /*
+    Cache
+  */
 
-  VkDevice device_;
-  ska::flat_hash_map<Key, Value, Hasher> cache_;
+  typedef api::Cache<Factory> Cache;
+  Cache cache;
 
- public:
-  VkShaderModule retrieve(const Key&);
-  void purge();
+  explicit Shader(const GPU& gpu)
+    : layout(gpu),
+      cache(Factory(gpu)) {
+  }
 };
+
+//
+// Impl
+//
+
+inline bool operator==(
+    const Shader::Layout::Descriptor& _1,
+    const Shader::Layout::Descriptor& _2) {
+  return _1.signature == _2.signature;
+}
+
+inline size_t Shader::Layout::Factory::Hasher::operator()(
+    const Descriptor& descriptor) const {
+  size_t hash = 0u;
+
+  for (const VkDescriptorType type : descriptor.signature) {
+    hash = c10::hash_combine(
+        hash,
+        c10::get_hash(type));
+  }
+
+  return hash;
+}
+
+inline Shader::Layout::Object::operator bool() const {
+  return VK_NULL_HANDLE != handle;
+}
+
+inline Shader::Layout::Object Shader::Layout::Cache::retrieve(
+    const Descriptor& descriptor) {
+  return {
+    cache_.retrieve(descriptor),
+    descriptor.signature,
+  };
+}
+
+inline bool operator==(
+    const Shader::WorkGroup& _1,
+    const Shader::WorkGroup& _2) {
+
+  return (_1.data[0u] == _2.data[0u] && _1.data[1u] == _2.data[1u] && _1.data[2u] == _2.data[2u]);
+}
+
+inline Shader::Descriptor::Descriptor(const char* const glsl)
+ : type(Type::Source),
+   shader{
+    .source = {
+      glsl,
+      0u,
+    },
+   } {
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+      glsl,
+      "Invalid shader source code!");
+}
+
+inline Shader::Descriptor::Descriptor(
+    const uint32_t* const code,
+    const uint32_t size)
+ : type(Type::Binary),
+   shader{
+    .binary = {
+      code,
+      size,
+    },
+   } {
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+      code && (0u != size),
+      "Invalid shader binary!");
+}
+
+inline bool operator==(
+    const Shader::Descriptor& _1,
+    const Shader::Descriptor& _2) {
+
+  if (_1.type != _2.type)
+    return false;
+
+  if (_1.type == Shader::Descriptor::Type::Binary) {
+    return (_1.shader.binary.spirv == _2.shader.binary.spirv && \
+            _1.shader.binary.size == _2.shader.binary.size);
+  }
+  else {
+    return (_1.shader.source.glsl == _2.shader.source.glsl);
+  }
+}
+
+inline size_t Shader::Factory::Hasher::operator()(
+    const Descriptor& descriptor) const {
+  static_assert(
+      sizeof(Descriptor::shader.source) == sizeof(Descriptor::shader.binary),
+      "This implementation requires sizeof(Source) to be equal to sizeof(Binary).");
+
+  return c10::get_hash(
+      descriptor.type,
+      descriptor.shader.binary.spirv,
+      descriptor.shader.binary.size);
+}
 
 } // namespace api
 } // namespace vulkan
@@ -172,11 +289,12 @@ class ShaderCache final {
 inline bool operator==(
     const VkDescriptorSetLayoutBinding& _1,
     const VkDescriptorSetLayoutBinding& _2) {
-  return (
-      _1.binding == _2.binding && _1.descriptorType == _2.descriptorType &&
-      _1.descriptorCount == _2.descriptorCount &&
-      _1.stageFlags == _2.stageFlags &&
-      _1.pImmutableSamplers == _2.pImmutableSamplers);
+
+  return (_1.binding == _2.binding && \
+          _1.descriptorType == _2.descriptorType && \
+          _1.descriptorCount == _2.descriptorCount && \
+          _1.stageFlags == _2.stageFlags && \
+          _1.pImmutableSamplers == _2.pImmutableSamplers);
 }
 
 #endif /* USE_VULKAN_API */

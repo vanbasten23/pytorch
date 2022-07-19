@@ -4,13 +4,13 @@ import io
 import itertools
 
 import onnx
+from test_pytorch_common import TestCase, run_tests
 
 import torch
 import torch.onnx
 from torch.nn import Module
 from torch.onnx import producer_name, producer_version
 from torch.onnx._globals import GLOBALS
-from torch.testing._internal import common_utils
 
 
 def check_onnx_opset_operator(
@@ -70,7 +70,7 @@ def check_onnx_opsets_operator(
         check_onnx_opset_operator(model, ops[opset_version], opset_version)
 
 
-class TestONNXOpset(common_utils.TestCase):
+class TestONNXOpset(TestCase):
     def test_opset_fallback(self):
         class MyModule(Module):
             def forward(self, x):
@@ -96,8 +96,7 @@ class TestONNXOpset(common_utils.TestCase):
             }
         ]
         ops_10 = [
-            {"op_name": "Constant"},
-            {"op_name": "TopK", "attributes": [{"name": "axis", "i": -1, "type": 2}]},
+            {"op_name": "TopK", "attributes": [{"name": "axis", "i": -1, "type": 2}]}
         ]
         ops = {9: ops_9, 10: ops_10}
         x = torch.arange(1.0, 6.0, requires_grad=True)
@@ -254,12 +253,10 @@ class TestONNXOpset(common_utils.TestCase):
             {"op_name": "Shape"},
             {"op_name": "Constant"},
             {"op_name": "Gather", "attributes": [{"name": "axis", "i": 0, "type": 2}]},
-            {"op_name": "Constant"},
             {
                 "op_name": "Unsqueeze",
                 "attributes": [{"name": "axes", "i": 0, "type": 7}],
             },
-            {"op_name": "Constant"},
             {"op_name": "Constant"},
             {"op_name": "Slice", "attributes": []},
         ]
@@ -429,7 +426,6 @@ class TestONNXOpset(common_utils.TestCase):
         )
 
         ops_9 = [
-            {"op_name": "Constant"},
             {"op_name": "Shape"},
             {"op_name": "Slice"},
             {"op_name": "Cast"},
@@ -442,7 +438,6 @@ class TestONNXOpset(common_utils.TestCase):
             },
         ]
         ops_10 = [
-            {"op_name": "Constant"},
             {"op_name": "Shape"},
             {"op_name": "Constant"},
             {"op_name": "Constant"},
@@ -524,4 +519,4 @@ class TestONNXOpset(common_utils.TestCase):
 
 
 if __name__ == "__main__":
-    common_utils.run_tests()
+    run_tests()
